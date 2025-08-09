@@ -14,11 +14,11 @@ const Parser = () => {
   const [selectedDocument, setSelectedDocument] = useState('');
   const [fileContent, setFileContent] = useState('');
   const [segments, setSegments] = useState([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [segmentsLoading, setSegmentsLoading] = useState(false);
   const [showOnlyTopics, setShowOnlyTopics] = useState(false);
   const [existingTags, setExistingTags] = useState([]);
   const [suggestedTags, setSuggestedTags] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [segmentError, setSegmentError] = useState('');
 
@@ -37,14 +37,11 @@ const Parser = () => {
 
   // 获取文档列表
   const fetchDocuments = async () => {
-    setLoading(true);
     try {
       const data = await getDocuments();
       setDocuments(data.documents);
     } catch (e) {
       setDocuments([]);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -54,28 +51,32 @@ const Parser = () => {
     setSegments([]);
     setSegmentError('');
     if (!filename) return;
-    setLoading(true);
+    // 先快速展示文档全览
+    setPreviewLoading(true);
     try {
       const type = getFileType(filename);
       if (type === 'txt') {
-        // 获取内容
         const preview = await previewFile(filename);
         setFileContent(preview.content);
       } else if (type === 'pdf') {
-        setFileContent('pdf'); // 标记为pdf，前端用iframe展示
+        setFileContent('pdf');
       } else {
         setFileContent('暂不支持该类型文档的全览');
       }
-      // 获取分段
-      setSegmentsLoading(true);
+    } catch (e) {
+      setFileContent('文档加载失败');
+    } finally {
+      setPreviewLoading(false);
+    }
+    // 再拉取分段（可能耗时）
+    setSegmentsLoading(true);
+    try {
       const segData = await getSegments({ filename });
       if (segData.error) setSegmentError(segData.error);
       setSegments(segData.segments || []);
     } catch (e) {
-      setFileContent('文档加载失败');
       setSegments([]);
     } finally {
-      setLoading(false);
       setSegmentsLoading(false);
     }
   };
@@ -157,13 +158,16 @@ const Parser = () => {
         <div className="doc-overview">
           <h3><i className="fas fa-book"></i> 文档全览</h3>
           <div className="doc-content" style={{background:'#222',color:'#fff',padding:12,borderRadius:4,minHeight:120,maxHeight:300,overflow:'auto'}}>
-            {loading ? <span><i className="fas fa-spinner fa-spin"></i> 加载中...</span> :
-              (!selectedDocument ? <span style={{color:'#888'}}>请选择文档</span> :
-                getFileType(selectedDocument)==='txt' ? fileContent :
-                getFileType(selectedDocument)==='pdf' ? (
-                  <iframe src={`http://localhost:5001/api/download/${encodeURIComponent(selectedDocument)}`} title="pdf全览" width="100%" height="260px" style={{border:'none',background:'#fff'}}></iframe>
-                ) : fileContent
-              )}
+            {!selectedDocument ? (
+              <span style={{color:'#888'}}>请选择文档</span>
+            ) : previewLoading ? (
+              <span><i className="fas fa-spinner fa-spin"></i> 加载中...</span>
+            ) : (
+              getFileType(selectedDocument)==='txt' ? fileContent :
+              getFileType(selectedDocument)==='pdf' ? (
+                <iframe src={`http://localhost:5001/api/download/${encodeURIComponent(selectedDocument)}`} title="pdf全览" width="100%" height="260px" style={{border:'none',background:'#fff'}}></iframe>
+              ) : fileContent
+            )}
           </div>
         </div>
         {/* 中部：分段预览 */}
