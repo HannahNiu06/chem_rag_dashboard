@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getDocuments, uploadFiles, previewFile, getSegments, getTags } from '../services/api';
 
 function getFileType(filename) {
@@ -14,12 +14,26 @@ const Parser = () => {
   const [selectedDocument, setSelectedDocument] = useState('');
   const [fileContent, setFileContent] = useState('');
   const [segments, setSegments] = useState([]);
+  const [segmentsLoading, setSegmentsLoading] = useState(false);
   const [showOnlyTopics, setShowOnlyTopics] = useState(false);
   const [existingTags, setExistingTags] = useState([]);
   const [suggestedTags, setSuggestedTags] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [segmentError, setSegmentError] = useState('');
+
+  // 仅对非标题段落生成显示编号
+  const nonTitleIndexMap = useMemo(() => {
+    let counter = 0;
+    const map = {};
+    segments.forEach(seg => {
+      if (!seg.is_title) {
+        counter += 1;
+        map[seg.id] = counter;
+      }
+    });
+    return map;
+  }, [segments]);
 
   // 获取文档列表
   const fetchDocuments = async () => {
@@ -53,6 +67,7 @@ const Parser = () => {
         setFileContent('暂不支持该类型文档的全览');
       }
       // 获取分段
+      setSegmentsLoading(true);
       const segData = await getSegments({ filename });
       if (segData.error) setSegmentError(segData.error);
       setSegments(segData.segments || []);
@@ -61,6 +76,7 @@ const Parser = () => {
       setSegments([]);
     } finally {
       setLoading(false);
+      setSegmentsLoading(false);
     }
   };
 
@@ -100,10 +116,10 @@ const Parser = () => {
     ));
   };
   const expandAll = () => {
-    setSegments(prev => prev.map(seg => ({ ...seg, collapsed: false })));
+    setSegments(prev => prev.map(seg => (seg.is_title ? seg : { ...seg, collapsed: false })));
   };
   const collapseAll = () => {
-    setSegments(prev => prev.map(seg => ({ ...seg, collapsed: true })));
+    setSegments(prev => prev.map(seg => (seg.is_title ? seg : { ...seg, collapsed: true })));
   };
 
   return (
@@ -162,38 +178,50 @@ const Parser = () => {
             </label>
           </div>
           <div className="segments-list">
-            {segmentError && <div style={{color:'red',padding:'1rem'}}>{segmentError}</div>}
-            {segments.map((segment) => (
-              <div key={segment.id} className={`segment-item ${segment.collapsed ? 'collapsed' : ''}`}>
-                <div className="segment-header" onClick={() => toggleSegment(segment.id)} style={{cursor:'pointer', display:'flex', alignItems:'center', gap:8}}>
-                  <i className={`fas ${segment.collapsed ? 'fa-chevron-right' : 'fa-chevron-down'}`}></i>
-                  <span className="segment-number" style={{textAlign:'left'}}>段落 {segment.id}</span>
-                  {segment.topic && (
-                    <span className="segment-topic" style={{marginLeft:8, color:'#6cf'}} title="主题">
-                      {segment.topic}
-                    </span>
-                  )}
-                  <div className="segment-actions" onClick={(e)=>e.stopPropagation()} style={{marginLeft:'auto'}}>
-                    <button className="btn-icon" title="编辑">
-                      <i className="fas fa-edit"></i>
-                    </button>
-                    <button className="btn-icon" title="删除">
-                      <i className="fas fa-trash"></i>
-                    </button>
-                  </div>
-                </div>
-                {!(segment.collapsed || showOnlyTopics) && (
-                  <div className="segment-content">
-                    <p>{segment.content}</p>
-                  </div>
-                )}
-                <div className="segment-tags">
-                  {segment.tags.map((tag, index) => (
-                    <span key={index} className="tag">{tag}</span>
-                  ))}
-                </div>
+            {segmentsLoading && (
+              <div style={{padding:'1rem', color:'#888'}}>
+                <i className="fas fa-spinner fa-spin"></i> 正在解析文档...
               </div>
-            ))}
+            )}
+            {segmentError && <div style={{color:'red',padding:'1rem'}}>{segmentError}</div>}
+            {segments.map((segment) => {
+              // 标题块：始终显示，独立样式，不可折叠
+              if (segment.is_title) {
+                return (
+                  <div key={segment.id} className="segment-title" style={{padding:'8px 0', fontWeight:600, color:'#2725c2'}}>
+                    {segment.content}
+                  </div>
+                );
+              }
+              // 非标题块：当“仅显示主题”开启时隐藏
+              if (showOnlyTopics) return null;
+              return (
+                <div key={segment.id} className={`segment-item ${segment.collapsed ? 'collapsed' : ''}`}>
+                  <div className="segment-header" onClick={() => toggleSegment(segment.id)} style={{cursor:'pointer', display:'flex', alignItems:'center', gap:8}}>
+                    <i className={`fas ${segment.collapsed ? 'fa-chevron-right' : 'fa-chevron-down'}`}></i>
+                    <span className="segment-number" style={{textAlign:'left'}}>段落 {nonTitleIndexMap[segment.id]}</span>
+                    <div className="segment-actions" onClick={(e)=>e.stopPropagation()} style={{marginLeft:'auto'}}>
+                      {/* <button className="btn-icon" title="编辑">
+                        <i className="fas fa-edit"></i>
+                      </button> */}
+                      {/* <button className="btn-icon" title="删除">
+                        <i className="fas fa-trash"></i>
+                      </button> */}
+                    </div>
+                  </div>
+                  {!segment.collapsed && (
+                    <div className="segment-content">
+                      <p>{segment.content}</p>
+                    </div>
+                  )}
+                  <div className="segment-tags">
+                    {segment.tags.map((tag, index) => (
+                      <span key={index} className="tag">{tag}</span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
         {/* 右侧：标签编辑面板（保留原有） */}
