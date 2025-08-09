@@ -14,6 +14,7 @@ const Parser = () => {
   const [selectedDocument, setSelectedDocument] = useState('');
   const [fileContent, setFileContent] = useState('');
   const [segments, setSegments] = useState([]);
+  const [showOnlyTopics, setShowOnlyTopics] = useState(false);
   const [existingTags, setExistingTags] = useState([]);
   const [suggestedTags, setSuggestedTags] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -155,14 +156,24 @@ const Parser = () => {
           <div className="segment-controls">
             <button className="btn-small" onClick={expandAll}>全部展开</button>
             <button className="btn-small" onClick={collapseAll}>全部折叠</button>
+            <label style={{marginLeft:12, display:'inline-flex', alignItems:'center', gap:8}}>
+              <input type="checkbox" checked={showOnlyTopics} onChange={e=>setShowOnlyTopics(e.target.checked)} />
+              仅显示主题
+            </label>
           </div>
           <div className="segments-list">
             {segmentError && <div style={{color:'red',padding:'1rem'}}>{segmentError}</div>}
             {segments.map((segment) => (
               <div key={segment.id} className={`segment-item ${segment.collapsed ? 'collapsed' : ''}`}>
-                <div className="segment-header">
-                  <span className="segment-number">段落 {segment.id}</span>
-                  <div className="segment-actions">
+                <div className="segment-header" onClick={() => toggleSegment(segment.id)} style={{cursor:'pointer', display:'flex', alignItems:'center', gap:8}}>
+                  <i className={`fas ${segment.collapsed ? 'fa-chevron-right' : 'fa-chevron-down'}`}></i>
+                  <span className="segment-number" style={{textAlign:'left'}}>段落 {segment.id}</span>
+                  {segment.topic && (
+                    <span className="segment-topic" style={{marginLeft:8, color:'#6cf'}} title="主题">
+                      {segment.topic}
+                    </span>
+                  )}
+                  <div className="segment-actions" onClick={(e)=>e.stopPropagation()} style={{marginLeft:'auto'}}>
                     <button className="btn-icon" title="编辑">
                       <i className="fas fa-edit"></i>
                     </button>
@@ -171,9 +182,11 @@ const Parser = () => {
                     </button>
                   </div>
                 </div>
-                <div className="segment-content">
-                  <p>{segment.content}</p>
-                </div>
+                {!(segment.collapsed || showOnlyTopics) && (
+                  <div className="segment-content">
+                    <p>{segment.content}</p>
+                  </div>
+                )}
                 <div className="segment-tags">
                   {segment.tags.map((tag, index) => (
                     <span key={index} className="tag">{tag}</span>

@@ -1,0 +1,104 @@
+
+show xlsx col name in preview.
+show errors.
+
+alert id page bottom graph cannot select null -- done
+last ingestion time -- done
+xlsx col display --done
+process timezone --done
+units api -- done
+
+now for the bottom chart, it can select and analyze pattern right, but the data displayed can contain datapoints null in y axis value, only timestamp, like"{\"columns\":[\"T_STAMP\",\"ME_T_COOLANT\"],\"data\":[[1734160620,null],[1734160680,null],[1734160740,null],[1734160800,null],[1734160860,null],[1734160920,null],[1734160980,null],[1734161040,null],[1734161100,null],[1734161160,29.6],[1734161220,29.6],[1734161280,29.6],[1734161340,29.6],[1734161400,29.6],[1734161460,29.6],[1734161520,29.6],[1734161580,29.6],[1734161640,29.6],[1734161700,29.6],[1734161760,29.6],... so the user selected bottom range cannot contain those null datapoints. if contain, disable the analyze pattern button.
+
+1. Navigate to where after saving to collection
+2. Add a success message after saving collection
+3. Data points format/Collelction page not showing chart when save. -- done
+4. Delete success confirmation -- done
+5. Update Confirmation for collection page -- done
+
+error file pure frontend, after clic proceed to ingest first frontend check on header and missing pk, then if have throw error, mark as fail.
+
+show errors in bullet point format in verification modal -- done
+for error files no need for maintenance.-- done
+fix collection update --NA
+save pattern then navigate back to my collection --done
+
+collection db new col last created last updated timestamp, display desc base on last updated -- do after db update
+
+2407
+bullet point
+missing required col
+●
+●
+missing data
+●
+●
+
+fix pattern importing json_data
+use original format scape the chars
+
+now i want to further change the error message. it now should look like this as i attached, so you have to display the specific required column missing and the specific required columns that have missing data, both show(inside) in bullet point format. and ofc, if a file dont miss required col or dont miss data in required col, dont display that part.
+
+sensor data
+sample folder
+--excel
+--folder--excel
+
+save this to the dest folder --done
+then call flask api, parameter is task id(process id)
+create sample flask api
+current: alr ingested --done
+total: total num of files in upload folder --done
+show in progress in status: a loading bar or number % --done
+for maintenance, disable the start button --done --done
+continuously query the api every xxx seconds to update the progress, --done
+how to determine the xxx? get from backend api, application properties --done
+error file load from the backend, but only for the most recent process. --done, do similar frequent update.
+another fix: if maintenance data cannot verify, dont include a new process --done
+
+2 ways of maintenance selection: --done
+
+- select a maintenance record
+- manually select date, engine, boat
+
+add necessary backend logs --done
+
+display the error in created_at desc
+put percentage next to it as well as loading bar
+
+date filter, after select start days, restrict selection of end date to 8 days later max
+api to load params, boats , engineid from backend appl property, implement scroll on params toggle. display 6-7
+
+```json
+{
+  "shipId": "PT79",
+  "engineId": "ME4",
+  "parameter": "GB_P_GEAR_CONTROL_OIL",
+  "startTimestamp": 1710807240,
+  "endTimestamp": 17114498200
+}
+```
+
+do ploting use the sensor data api --done
+draw verticle line if select maintenance data --done
+fix select maintenance record --done
+
+parameter : frontend add search --done
+must select time/ship engine then can do parameter --done
+
+dont show bottom graph unless user select --done
+
+0729
+percentage next to loading bar --done
+hover can show whole name --done
+if most recent one is fail we stop regularly update error message --done
+show label not key for bottom graph --done
+fix loader gone issue for alert id page dpne
+select from and auto update the to for date filter data exploration page
+
+make consistent change in date filter component
+can select less than 8 days., if more than 8 days auto toggle the other date to match 8 days
+remove console logs.
+
+
+we need to completely change the date filter logic. add a okay button below the reset button, after user change something in the date filter popup, dont apply to the date display immediately. first detect if the start date is after end date / time range is over 

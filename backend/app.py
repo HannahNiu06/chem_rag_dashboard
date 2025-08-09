@@ -6,6 +6,7 @@ from datetime import datetime
 import random
 import json
 from PyPDF2 import PdfReader
+import requests
 
 app = Flask(__name__)
 CORS(app)
@@ -17,6 +18,95 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # 模拟数据存储
 qa_history = []
 document_segments = {}
+
+# 第三方主题提取 API（如 MinerU）配置
+MINERU_API_URL = os.getenv("MINERU_API_URL", "")
+MINERU_API_KEY = os.getenv("MINERU_API_KEY", "")
+
+
+def _fallback_generate_topic(text: str) -> str:
+    """在未配置第三方服务时的简单主题生成：取首行/首句，限长。"""
+    if not text:
+        return ""
+    sample = text.strip().splitlines()[0] if "\n" in text else text.strip()
+    # 简单句号分割（兼容中英文）
+    for sep in ["。", ".", "!", "！", "?", "？", ":", "："]:
+        if sep in sample:
+            sample = sample.split(sep)[0]
+            break
+    # 截断，中文截 24 字，英文截 12 词
+    if len(sample) > 48:
+        return sample[:48] + "…"
+    return sample
+
+
+def _generate_topic_with_third_party(text: str) -> str:
+    """调用第三方 API（如 MinerU）为分段生成主题。若失败则回退。"""
+    if not MINERU_API_URL:
+        return _fallback_generate_topic(text)
+    try:
+        headers = {"Content-Type": "application/json"}
+        if MINERU_API_KEY:
+            headers["Authorization"] = f"Bearer {MINERU_API_KEY}"
+        payload = {"text": text}
+        resp = requests.post(MINERU_API_URL, headers=headers, json=payload, timeout=20)
+        if resp.status_code == 200:
+            data = resp.json() if resp.content else {}
+            # 兼容多种可能的返回结构
+            topic = (
+                (data.get("data") or {}).get("topic")
+                or data.get("topic")
+                or (data.get("result") or {}).get("title")
+            )
+            if isinstance(topic, str) and topic.strip():
+                return topic.strip()
+        # 非 200 或无有效 topic，回退
+        return _fallback_generate_topic(text)
+    except Exception:
+        return _fallback_generate_topic(text)
+
+
+def _segment_with_third_party(full_text: str):
+    """调用第三方 API 进行分段和主题提取。期望返回形如：
+    {
+        "segments": [
+            {"topic": "...", "content": "..."},
+            ...
+        ]
+    }
+    若失败或未配置，则返回 None。
+    """
+    if not MINERU_API_URL:
+        return None
+    try:
+        headers = {"Content-Type": "application/json"}
+        if MINERU_API_KEY:
+            headers["Authorization"] = f"Bearer {MINERU_API_KEY}"
+        payload = {"text": full_text, "task": "segment"}
+        resp = requests.post(MINERU_API_URL, headers=headers, json=payload, timeout=60)
+        if resp.status_code != 200:
+            return None
+        data = resp.json() if resp.content else {}
+        segments = data.get("segments") or (data.get("data") or {}).get("segments")
+        if not isinstance(segments, list):
+            return None
+        normalized = []
+        for idx, seg in enumerate(segments, start=1):
+            topic = seg.get("topic") or seg.get("title") or ""
+            content = seg.get("content") or seg.get("text") or ""
+            if not isinstance(content, str):
+                continue
+            if not isinstance(topic, str) or not topic.strip():
+                topic = _fallback_generate_topic(content)
+            normalized.append({
+                "id": idx,
+                "topic": topic.strip(),
+                "content": content.strip(),
+                "tags": []
+            })
+        return {"segments": normalized}
+    except Exception:
+        return None
 
 @app.route('/api/dashboard', methods=['GET'])
 def get_dashboard_data():
@@ -145,7 +235,17 @@ def get_qa_history():
 
 @app.route('/api/parser/segments', methods=['GET'])
 def get_segments():
-    """获取指定文档的分段（txt/pdf支持，docx暂不支持）"""
+    """获取指定文档的分段（txt/pdf支持，docx暂不支持）。
+
+    响应结构：{
+        "segments": [
+            {"id": 1, "topic": "…", "content": "…", "tags": []},
+            …
+        ],
+        "error": ""  # 可选
+    }
+    若配置了第三方主题提取 API（环境变量 MINERU_API_URL/MINERU_API_KEY），
+    将为每个分段生成 topic；否则使用本地回退逻辑。"""
     filename = request.args.get('filename')
     if not filename:
         return jsonify({"segments": [], "error": "未指定文档"})
@@ -154,38 +254,58 @@ def get_segments():
         return jsonify({"segments": [], "error": "文件不存在"})
     ext = filename.split('.')[-1].lower()
     if ext == 'txt':
-        # 简单分段：按空行或每20行分段
-        segments = []
+        # 若配置第三方，则尝试一次性分段
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            lines = f.readlines()
+            full_text = f.read()
+        third_party = _segment_with_third_party(full_text)
+        if third_party:
+            return jsonify(third_party)
+        # 回退：简单分段：按空行或每20行分段
+        segments = []
+        lines = full_text.splitlines(keepends=True)
         chunk = []
         for i, line in enumerate(lines):
             if line.strip() == '' or len(chunk) >= 20:
                 if chunk:
+                    content = ''.join(chunk).strip()
                     segments.append({
                         "id": len(segments)+1,
-                        "content": ''.join(chunk).strip(),
+                        "topic": _generate_topic_with_third_party(content),
+                        "content": content,
                         "tags": []
                     })
                     chunk = []
             chunk.append(line)
         if chunk:
+            content = ''.join(chunk).strip()
             segments.append({
                 "id": len(segments)+1,
-                "content": ''.join(chunk).strip(),
+                "topic": _generate_topic_with_third_party(content),
+                "content": content,
                 "tags": []
             })
         return jsonify({"segments": segments})
     elif ext == 'pdf':
         # 每页为一段
-        segments = []
         try:
             reader = PdfReader(file_path)
-            for i, page in enumerate(reader.pages):
+            page_texts = []
+            for page in reader.pages:
                 text = page.extract_text() or ''
+                page_texts.append(text)
+            full_text = "\n\n".join(page_texts)
+            # 若配置第三方，则尝试一次性分段
+            third_party = _segment_with_third_party(full_text)
+            if third_party:
+                return jsonify(third_party)
+            # 回退：每页为一段
+            segments = []
+            for i, text in enumerate(page_texts):
+                content = (text or '').strip() or f"第{i+1}页无文本内容"
                 segments.append({
                     "id": i+1,
-                    "content": text.strip() or f"第{i+1}页无文本内容",
+                    "topic": _generate_topic_with_third_party(content),
+                    "content": content,
                     "tags": []
                 })
             return jsonify({"segments": segments})

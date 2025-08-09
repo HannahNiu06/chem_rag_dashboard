@@ -82,9 +82,9 @@ export const getQAHistory = async () => {
 };
 
 // Parser API
-export const getSegments = async () => {
+export const getSegments = async ({ filename }) => {
   try {
-    const response = await api.get('/parser/segments');
+    const response = await api.get(`/parser/segments`, { params: { filename } });
     return response.data;
   } catch (error) {
     console.error('Error fetching segments:', error);
