@@ -64,6 +64,21 @@ chem_rag_dashboard/
 
 ## 安装和运行
 
+### 0. 启动 MinerU 本地解析服务（用于 PDF 解析）
+
+使用 Docker 在本地启动 MinerU（默认暴露端口 8888）：
+
+```bash
+docker pull quincyqiang/mineru:0.3-models
+docker run -itd --name=mineru_server --gpus=all -p 8888:8000 quincyqiang/mineru:0.3-models
+```
+
+说明：
+- 需要有可用的 NVIDIA GPU 与正确的驱动/CUDA 环境；如无 GPU，可去掉 `--gpus=all`，性能会下降。
+- 后端默认将 PDF 文件以 multipart/form-data 方式 POST 到
+  `http://localhost:8888/pdf_parse?parse_method=auto&is_json_md_dump=true&output_dir=output`。
+- 如需修改该地址，可设置环境变量 `LOCAL_PDF_PARSE_URL`。
+
 ### 1. 克隆项目
 ```bash
 git clone <repository-url>
